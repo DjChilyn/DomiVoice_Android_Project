@@ -3,6 +3,9 @@ name: Build Domi Voice APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
 
   build:
@@ -21,9 +24,6 @@ jobs:
 
       # =========================================================
       # 2. JAVA 17
-      # IMPORTANT:
-      # Gradle cache is intentionally disabled because the Android
-      # project is stored inside a ZIP file.
       # =========================================================
 
       - name: Setup Java 17
@@ -31,7 +31,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: 'none'
 
 
       # =========================================================
@@ -43,7 +42,7 @@ jobs:
 
 
       # =========================================================
-      # 4. EXTRACT ANDROID PROJECT
+      # 4. EXTRACT ZIP
       # =========================================================
 
       - name: Extract Domi Voice project
@@ -56,36 +55,22 @@ jobs:
           echo "EXTRACTING DOMI VOICE PROJECT"
           echo "========================================"
 
-          ZIP_FILE="DomiVoice_Android_Project.zip"
-
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: $ZIP_FILE was not found."
-            echo ""
-            echo "Repository files:"
-            find . -maxdepth 3 -type f | sort
-            exit 1
-          fi
-
           rm -rf project
-
           mkdir -p project
 
-          unzip -q "$ZIP_FILE" -d project
+          unzip -q DomiVoice_Android_Project.zip -d project
 
           echo ""
-          echo "ZIP EXTRACTION COMPLETED."
-
-          echo ""
-          echo "FILES INSIDE PROJECT:"
+          echo "FILES INSIDE ZIP:"
           echo "----------------------------------------"
 
-          find project -maxdepth 10 -type f | sort
+          find project -maxdepth 12 -type f | sort
 
           echo "----------------------------------------"
 
 
       # =========================================================
-      # 5. FIND ANDROID GRADLE PROJECT
+      # 5. FIND ANDROID PROJECT
       # =========================================================
 
       - name: Find Android project
@@ -98,33 +83,26 @@ jobs:
           echo "SEARCHING FOR ANDROID PROJECT"
           echo "========================================"
 
-          PROJECT_DIR=""
-
-          SETTINGS_FILE=$(find project \
-            -type f \
-            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
-            -print -quit)
-
-          if [ -n "$SETTINGS_FILE" ]; then
-
-            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
-
-          fi
+          PROJECT_DIR=$(
+            find project \
+              -type f \
+              \( \
+                -name "settings.gradle.kts" \
+                -o \
+                -name "settings.gradle" \
+              \) \
+              -print \
+              -quit |
+            xargs -r dirname
+          )
 
           if [ -z "$PROJECT_DIR" ]; then
 
             echo "ERROR: Android Gradle project was not found."
 
             echo ""
-            echo "Searching for build files..."
-
-            find project \
-              -type f \
-              \( -name "build.gradle" \
-              -o -name "build.gradle.kts" \
-              -o -name "settings.gradle" \
-              -o -name "settings.gradle.kts" \) \
-              -print
+            echo "ZIP CONTENTS:"
+            find project -maxdepth 12 -type f | sort
 
             exit 1
 
@@ -148,54 +126,38 @@ jobs:
           set -e
 
           echo "========================================"
-          echo "PREPARING GRADLE"
+          echo "PREPARING GRADLE WRAPPER"
           echo "========================================"
 
           cd "$PROJECT_DIR"
 
-          echo ""
-          echo "PROJECT CONTENT:"
-          find . -maxdepth 4 -type f | sort
-
-
-          # -----------------------------------------------------
-          # EXISTING GRADLE WRAPPER
-          # -----------------------------------------------------
-
           if [ -f "./gradlew" ]; then
 
-            echo ""
             echo "Gradle wrapper found."
-
-            chmod +x ./gradlew
 
           else
 
-            echo ""
             echo "Gradle wrapper not found."
 
-            echo "Creating Gradle wrapper using system Gradle."
+            echo "Creating Gradle wrapper..."
 
             gradle wrapper --gradle-version 8.7
 
-            chmod +x ./gradlew
-
           fi
 
+          chmod +x ./gradlew
 
           echo ""
           echo "GRADLE WRAPPER:"
           ls -la ./gradlew
 
-
           echo ""
           echo "GRADLE VERSION:"
-
           ./gradlew --version
 
 
       # =========================================================
-      # 7. FIX ANDROID PROJECT CONFIGURATION
+      # 7. FIX ANDROID CONFIGURATION
       # =========================================================
 
       - name: Fix Android project configuration
@@ -213,27 +175,20 @@ jobs:
           # FIND MANIFEST
           # -----------------------------------------------------
 
-          MANIFEST=$(find "$PROJECT_DIR" \
-            -path "*/app/src/main/AndroidManifest.xml" \
-            -type f \
-            -print -quit)
-
+          MANIFEST=$(
+            find "$PROJECT_DIR" \
+              -path "*/app/src/main/AndroidManifest.xml" \
+              -print \
+              -quit
+          )
 
           if [ -z "$MANIFEST" ]; then
 
             echo "ERROR: AndroidManifest.xml was not found."
 
-            echo ""
-            echo "Searching for manifests..."
-
-            find "$PROJECT_DIR" \
-              -name "AndroidManifest.xml" \
-              -print
-
             exit 1
 
           fi
-
 
           echo ""
           echo "ANDROID MANIFEST:"
@@ -241,11 +196,8 @@ jobs:
 
 
           # -----------------------------------------------------
-          # REMOVE OLD PACKAGE ATTRIBUTE
+          # REMOVE OBSOLETE PACKAGE ATTRIBUTE
           # -----------------------------------------------------
-
-          echo ""
-          echo "Removing obsolete package attribute..."
 
           sed -i \
             's/package="com\.domivoice\.app"//g' \
@@ -253,16 +205,12 @@ jobs:
 
 
           # -----------------------------------------------------
-          # REMOVE MISSING LAUNCHER ICON REFERENCES
+          # REMOVE MISSING ICON REFERENCES
           # -----------------------------------------------------
-
-          echo ""
-          echo "Removing missing launcher icon references..."
 
           sed -i \
             '/android:icon="@mipmap\/ic_launcher"/d' \
             "$MANIFEST"
-
 
           sed -i \
             '/android:roundIcon="@mipmap\/ic_launcher_round"/d' \
@@ -270,45 +218,47 @@ jobs:
 
 
           # -----------------------------------------------------
-          # GRADLE PROPERTIES
+          # CONFIGURE ANDROIDX
           # -----------------------------------------------------
 
           GRADLE_PROPERTIES="$PROJECT_DIR/gradle.properties"
 
           touch "$GRADLE_PROPERTIES"
 
-
           sed -i \
             '/^android\.useAndroidX=/d' \
             "$GRADLE_PROPERTIES"
-
 
           sed -i \
             '/^android\.enableJetifier=/d' \
             "$GRADLE_PROPERTIES"
 
-
-          sed -i \
-            '/^org\.gradle\.jvmargs=/d' \
-            "$GRADLE_PROPERTIES"
-
-
-          sed -i \
-            '/^kotlin\.code\.style=/d' \
-            "$GRADLE_PROPERTIES"
-
-
           echo "android.useAndroidX=true" \
             >> "$GRADLE_PROPERTIES"
-
 
           echo "android.enableJetifier=true" \
             >> "$GRADLE_PROPERTIES"
 
 
+          # -----------------------------------------------------
+          # GRADLE JVM
+          # -----------------------------------------------------
+
+          sed -i \
+            '/^org\.gradle\.jvmargs=/d' \
+            "$GRADLE_PROPERTIES"
+
           echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" \
             >> "$GRADLE_PROPERTIES"
 
+
+          # -----------------------------------------------------
+          # KOTLIN STYLE
+          # -----------------------------------------------------
+
+          sed -i \
+            '/^kotlin\.code\.style=/d' \
+            "$GRADLE_PROPERTIES"
 
           echo "kotlin.code.style=official" \
             >> "$GRADLE_PROPERTIES"
@@ -316,20 +266,12 @@ jobs:
 
           echo ""
           echo "FINAL GRADLE PROPERTIES:"
-          echo "----------------------------------------"
-
           cat "$GRADLE_PROPERTIES"
-
-          echo "----------------------------------------"
 
 
           echo ""
           echo "FINAL ANDROID MANIFEST:"
-          echo "----------------------------------------"
-
           cat "$MANIFEST"
-
-          echo "----------------------------------------"
 
 
       # =========================================================
@@ -347,13 +289,9 @@ jobs:
           echo "========================================"
 
           echo ""
-          echo "Project directory:"
+          echo "PROJECT DIRECTORY:"
           echo "$PROJECT_DIR"
 
-
-          # -----------------------------------------------------
-          # CHECK GRADLE
-          # -----------------------------------------------------
 
           if [ ! -f "$PROJECT_DIR/gradlew" ]; then
 
@@ -364,38 +302,13 @@ jobs:
           fi
 
 
-          # -----------------------------------------------------
-          # CHECK SETTINGS
-          # -----------------------------------------------------
-
-          if [ ! -f "$PROJECT_DIR/settings.gradle.kts" ] \
-            && [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
-
-            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
-
-            exit 1
-
-          fi
+          MANIFEST=$(find "$PROJECT_DIR" \
+            -path "*/app/src/main/AndroidManifest.xml" \
+            -print \
+            -quit)
 
 
-          # -----------------------------------------------------
-          # CHECK APP MODULE
-          # -----------------------------------------------------
-
-          if [ ! -d "$PROJECT_DIR/app" ]; then
-
-            echo "ERROR: app module was not found."
-
-            exit 1
-
-          fi
-
-
-          # -----------------------------------------------------
-          # CHECK MANIFEST
-          # -----------------------------------------------------
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml" ]; then
+          if [ -z "$MANIFEST" ]; then
 
             echo "ERROR: AndroidManifest.xml was not found."
 
@@ -404,14 +317,21 @@ jobs:
           fi
 
 
-          # -----------------------------------------------------
-          # CHECK BUILD FILE
-          # -----------------------------------------------------
+          APP_GRADLE=$(find "$PROJECT_DIR/app" \
+            -maxdepth 1 \
+            -type f \
+            \( \
+              -name "build.gradle" \
+              -o \
+              -name "build.gradle.kts" \
+            \) \
+            -print \
+            -quit)
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ] \
-            && [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
 
-            echo "ERROR: app Gradle build file was not found."
+          if [ -z "$APP_GRADLE" ]; then
+
+            echo "ERROR: App Gradle build file was not found."
 
             exit 1
 
@@ -419,14 +339,26 @@ jobs:
 
 
           echo ""
+          echo "GRADLE WRAPPER:"
+          ls -lh "$PROJECT_DIR/gradlew"
+
+          echo ""
+          echo "MANIFEST:"
+          echo "$MANIFEST"
+
+          echo ""
+          echo "APP GRADLE FILE:"
+          echo "$APP_GRADLE"
+
+          echo ""
           echo "PROJECT VERIFICATION PASSED."
 
 
       # =========================================================
-      # 9. BUILD DEBUG APK
+      # 9. BUILD APK
       # =========================================================
 
-      - name: Build debug APK
+      - name: Build Domi Voice debug APK
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
@@ -440,6 +372,9 @@ jobs:
           chmod +x ./gradlew
 
           ./gradlew clean assembleDebug --stacktrace
+
+          echo ""
+          echo "BUILD COMPLETED SUCCESSFULLY."
 
 
       # =========================================================
@@ -456,23 +391,25 @@ jobs:
           echo "SEARCHING FOR GENERATED APK"
           echo "========================================"
 
-          APK=$(find "$PROJECT_DIR/app/build/outputs" \
-            -type f \
-            -name "*.apk" \
-            -print -quit)
+          APK_FILE=$(
+            find "$PROJECT_DIR/app/build/outputs/apk" \
+              -type f \
+              -name "*.apk" \
+              -print \
+              -quit
+          )
 
 
-          if [ -z "$APK" ]; then
+          if [ -z "$APK_FILE" ]; then
 
-            echo "ERROR: APK was not generated."
+            echo "ERROR: No APK file was generated."
 
             echo ""
             echo "BUILD OUTPUT:"
             find "$PROJECT_DIR/app/build" \
-              -maxdepth 8 \
+              -maxdepth 12 \
               -type f \
-              -print \
-              2>/dev/null || true
+              | sort
 
             exit 1
 
@@ -481,18 +418,70 @@ jobs:
 
           echo ""
           echo "APK FOUND:"
-          echo "$APK"
+          echo "$APK_FILE"
 
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
 
 
       # =========================================================
-      # 11. UPLOAD APK
+      # 11. PREPARE APK
+      # =========================================================
+
+      - name: Prepare APK artifact
+        shell: bash
+        run: |
+
+          set -e
+
+          echo "========================================"
+          echo "PREPARING APK ARTIFACT"
+          echo "========================================"
+
+          rm -rf release
+
+          mkdir -p release
+
+          cp "$APK_FILE" \
+            "release/DomiVoice-debug.apk"
+
+          echo ""
+          echo "APK READY:"
+
+          ls -lh release/DomiVoice-debug.apk
+
+
+      # =========================================================
+      # 12. UPLOAD APK
       # =========================================================
 
       - name: Upload Domi Voice APK
         uses: actions/upload-artifact@v4
         with:
-          name: DomiVoice-debug-apk
-          path: ${{ env.APK_PATH }}
+          name: DomiVoice-debug-APK
+          path: release/DomiVoice-debug.apk
           if-no-files-found: error
+          retention-days: 30
+
+
+      # =========================================================
+      # 13. FINAL SUMMARY
+      # =========================================================
+
+      - name: Build summary
+        shell: bash
+        run: |
+
+          echo "========================================"
+          echo "DOMI VOICE BUILD SUCCESSFUL"
+          echo "========================================"
+
+          echo ""
+          echo "APK FILE:"
+          ls -lh release/DomiVoice-debug.apk
+
+          echo ""
+          echo "ARTIFACT:"
+          echo "DomiVoice-debug-APK"
+
+          echo ""
+          echo "The APK was successfully uploaded."
