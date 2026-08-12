@@ -36,6 +36,14 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Proyecto encontrado: $PROJECT_DIR"
 
+      - name: Configure AndroidX
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "android.useAndroidX=true" > gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+          echo "Contenido de gradle.properties:"
+          cat gradle.properties
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
