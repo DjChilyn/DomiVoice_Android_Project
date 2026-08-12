@@ -27,23 +27,19 @@ jobs:
         run: |
           mkdir -p project
           unzip -q DomiVoice_Android_Project.zip -d project
-          echo "Contenido del ZIP:"
-          find project -maxdepth 4 -type f | head -100
+          echo "Contenido del proyecto:"
+          find project -maxdepth 3 -type f | head -100
 
-      - name: Find Gradle project
+      - name: Find Android project
         run: |
-          PROJECT_DIR=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit | xargs dirname)
-          
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: No se encontró settings.gradle ni settings.gradle.kts"
-            exit 1
-          fi
-          
+          PROJECT_DIR=$(find project -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) -print -quit | xargs dirname)
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Proyecto encontrado en: $PROJECT_DIR"
+          echo "Proyecto encontrado: $PROJECT_DIR"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -51,7 +47,7 @@ jobs:
 
       - name: Find APK
         run: |
-          echo "APK encontrado:"
+          echo "APK generado:"
           find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
