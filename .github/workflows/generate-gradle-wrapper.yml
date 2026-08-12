@@ -1,0 +1,186 @@
+name: Generate Gradle Wrapper 8.2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-wrapper:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # =========================================================
+      # 1. CHECKOUT
+      # =========================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # =========================================================
+      # 2. JAVA 17
+      # =========================================================
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # =========================================================
+      # 3. INSTALL GRADLE 8.2
+      # =========================================================
+      - name: Install Gradle 8.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+
+      # =========================================================
+      # 4. LOCATE ANDROID PROJECT
+      # =========================================================
+      - name: Locate Android project
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "SEARCHING FOR ANDROID PROJECT"
+          echo "========================================"
+
+          PROJECT_DIR=$(
+            find . \
+              -type f \
+              \( \
+                -name "settings.gradle.kts" \
+                -o \
+                -name "settings.gradle" \
+              \) \
+              -not -path "./.git/*" \
+              -print \
+              -quit |
+            xargs -r dirname
+          )
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project not found."
+            find . -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          echo "ANDROID PROJECT:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      # =========================================================
+      # 5. GENERATE GRADLE WRAPPER
+      # =========================================================
+      - name: Generate Gradle Wrapper 8.2
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "GENERATING GRADLE WRAPPER 8.2"
+          echo "========================================"
+
+          gradle --version
+
+          gradle wrapper \
+            --gradle-version 8.2 \
+            --distribution-type bin
+
+      # =========================================================
+      # 6. VERIFY WRAPPER
+      # =========================================================
+      - name: Verify Gradle Wrapper
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "VERIFYING GRADLE WRAPPER"
+          echo "========================================"
+
+          REQUIRED_FILES=(
+            "gradlew"
+            "gradlew.bat"
+            "gradle/wrapper/gradle-wrapper.jar"
+            "gradle/wrapper/gradle-wrapper.properties"
+          )
+
+          for FILE in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$FILE" ]; then
+              echo "ERROR: Missing file:"
+              echo "$FILE"
+              exit 1
+            fi
+
+            echo "OK: $FILE"
+          done
+
+          chmod +x gradlew
+
+          echo ""
+          echo "WRAPPER VERSION:"
+          ./gradlew --version
+
+      # =========================================================
+      # 7. COMMIT WRAPPER TO REPOSITORY
+      # =========================================================
+      - name: Commit Gradle Wrapper
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "COMMITTING GRADLE WRAPPER"
+          echo "========================================"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add gradlew
+          git add gradlew.bat
+          git add gradle/wrapper/gradle-wrapper.jar
+          git add gradle/wrapper/gradle-wrapper.properties
+
+          if git diff --cached --quiet; then
+            echo "No Gradle Wrapper changes detected."
+            exit 0
+          fi
+
+          git commit -m "Add Gradle Wrapper 8.2"
+
+          git push
+
+      # =========================================================
+      # 8. FINAL VERIFICATION
+      # =========================================================
+      - name: Final verification
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "GRADLE WRAPPER GENERATION SUCCESSFUL"
+          echo "========================================"
+
+          echo ""
+          echo "FILES:"
+          ls -lh gradlew
+          ls -lh gradlew.bat
+          ls -lh gradle/wrapper/gradle-wrapper.jar
+          ls -lh gradle/wrapper/gradle-wrapper.properties
+
+          echo ""
+          echo "GRADLE:"
+          ./gradlew --version
+
+          echo ""
+          echo "STATUS:"
+          echo "Gradle Wrapper 8.2 successfully generated."
