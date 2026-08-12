@@ -1,16 +1,14 @@
-name: Build Domi Voice APK
+name: Diagnostico Domi Voice
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
-  build:
+  diagnose:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -23,45 +21,108 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Extract Android project
+      - name: Extraer proyecto
         run: |
+          set -e
+
           mkdir -p project
+
           unzip -q DomiVoice_Android_Project.zip -d project
-          echo "Contenido del proyecto:"
-          find project -maxdepth 3 -type f | head -100
 
-      - name: Find Android project
+          echo "========================================"
+          echo "ESTRUCTURA DEL PROYECTO"
+          echo "========================================"
+
+          find project -maxdepth 8 -type f | sort
+
+      - name: Encontrar proyecto Gradle
         run: |
-          PROJECT_DIR=$(find project -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) -print -quit | xargs dirname)
+          set -e
+
+          PROJECT_DIR=$(find project -type f \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -print -quit | xargs -r dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: No se encontró settings.gradle"
+            exit 1
+          fi
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Proyecto encontrado: $PROJECT_DIR"
 
-      - name: Configure AndroidX
+          echo "========================================"
+          echo "PROYECTO ENCONTRADO"
+          echo "========================================"
+
+          echo "$PROJECT_DIR"
+
+      - name: Versiones y configuración
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "android.useAndroidX=true" > gradle.properties
-          echo "android.enableJetifier=true" >> gradle.properties
-          echo "Contenido de gradle.properties:"
-          cat gradle.properties
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+          echo "========================================"
+          echo "GRADLE DEL SISTEMA"
+          echo "========================================"
 
-      - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle assembleDebug --stacktrace
+          gradle --version || true
 
-      - name: Find APK
-        run: |
-          echo "APK generado:"
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          echo "========================================"
+          echo "GRADLE WRAPPER"
+          echo "========================================"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DomiVoice-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+            cat gradle/wrapper/gradle-wrapper.properties
+          else
+            echo "NO EXISTE GRADLE WRAPPER"
+          fi
+
+          echo "========================================"
+          echo "SETTINGS.GRADLE"
+          echo "========================================"
+
+          if [ -f settings.gradle.kts ]; then
+            cat settings.gradle.kts
+          elif [ -f settings.gradle ]; then
+            cat settings.gradle
+          fi
+
+          echo "========================================"
+          echo "BUILD.GRADLE"
+          echo "========================================"
+
+          if [ -f build.gradle.kts ]; then
+            cat build.gradle.kts
+          elif [ -f build.gradle ]; then
+            cat build.gradle
+          fi
+
+          echo "========================================"
+          echo "APP BUILD.GRADLE"
+          echo "========================================"
+
+          if [ -f app/build.gradle.kts ]; then
+            cat app/build.gradle.kts
+          elif [ -f app/build.gradle ]; then
+            cat app/build.gradle
+          fi
+
+          echo "========================================"
+          echo "GRADLE.PROPERTIES"
+          echo "========================================"
+
+          if [ -f gradle.properties ]; then
+            cat gradle.properties
+          fi
+
+          echo "========================================"
+          echo "KOTLIN / KAPT / ANDROID"
+          echo "========================================"
+
+          grep -RniE \
+            "kotlin|kapt|com.android.application|com.android.library|gradle|androidx" \
+            . \
+            --include="*.gradle" \
+            --include="*.gradle.kts" \
+            --include="*.properties" \
+            --exclude-dir=.gradle \
+            || true
