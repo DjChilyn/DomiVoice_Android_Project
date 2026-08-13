@@ -38,9 +38,9 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
       # =========================================================
-      # 3. GRADLE WRAPPER Y REPARACIÓN AUTOMÁTICA DE ANDROIDX
+      # 3. GRADLE WRAPPER, ANDROIDX Y MEMORIA RAM (4GB)
       # =========================================================
-      - name: Preparar Gradle y AndroidX
+      - name: Preparar Gradle, AndroidX y Memoria RAM
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
@@ -48,9 +48,13 @@ jobs:
           fi
           chmod +x ./gradlew
           
-          # Inyectamos AndroidX automáticamente para evitar el error
-          echo "android.useAndroidX=true" >> gradle.properties
+          # Inyectamos AndroidX y 4GB de RAM obligatorios
+          echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> gradle.properties
+          
+          # Evitamos la advertencia de ProGuard creando el archivo si no existe
+          touch app/proguard-rules.pro
 
       # =========================================================
       # 4. LIMPIAR MANIFEST EN TIEMPO REAL
@@ -85,6 +89,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: |
           ./gradlew clean assembleRelease \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
