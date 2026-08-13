@@ -38,9 +38,9 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
       # =========================================================
-      # 3. GRADLE WRAPPER, ANDROIDX Y MEMORIA RAM (4GB)
+      # 3. GRADLE, ANDROIDX Y REGLAS PROGUARD (ANTI-CRASH)
       # =========================================================
-      - name: Preparar Gradle, AndroidX y Memoria RAM
+      - name: Preparar Gradle y Reglas
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
@@ -48,13 +48,17 @@ jobs:
           fi
           chmod +x ./gradlew
           
-          # Inyectamos AndroidX y 4GB de RAM obligatorios
+          # AndroidX y RAM
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> gradle.properties
           
-          # Evitamos la advertencia de ProGuard creando el archivo si no existe
-          touch app/proguard-rules.pro
+          # LA MAGIA ANTI-CRASH: Evitar que R8 destruya el código
+          mkdir -p app
+          echo "-dontobfuscate" > app/proguard-rules.pro
+          echo "-dontshrink" >> app/proguard-rules.pro
+          echo "-dontoptimize" >> app/proguard-rules.pro
+          echo "-keep class com.domivoice.app.** { *; }" >> app/proguard-rules.pro
 
       # =========================================================
       # 4. LIMPIAR MANIFEST EN TIEMPO REAL
@@ -75,7 +79,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERROR: No se encontró el secreto KEYSTORE_BASE64 en GitHub."
+            echo "ERROR: No se encontró el secreto KEYSTORE_BASE64."
             exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > $GITHUB_WORKSPACE/keystore.jks
@@ -89,7 +93,6 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=1g"
         run: |
           ./gradlew clean assembleRelease \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/keystore.jks \
