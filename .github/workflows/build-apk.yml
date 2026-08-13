@@ -25,7 +25,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # =========================================================
-      # 2. LOCALIZAR PROYECTO (Auto-sanación)
+      # 2. LOCALIZAR PROYECTO
       # =========================================================
       - name: Buscar Proyecto Android
         run: |
@@ -38,18 +38,22 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
       # =========================================================
-      # 3. GENERAR GRADLE WRAPPER AUTOMÁTICAMENTE
+      # 3. GRADLE WRAPPER Y REPARACIÓN AUTOMÁTICA DE ANDROIDX
       # =========================================================
-      - name: Preparar Gradle Wrapper
+      - name: Preparar Gradle y AndroidX
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
             gradle wrapper --gradle-version 8.2
           fi
           chmod +x ./gradlew
+          
+          # Inyectamos AndroidX automáticamente para evitar el error
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
 
       # =========================================================
-      # 4. LIMPIAR ERRORES DEL MANIFEST EN TIEMPO REAL
+      # 4. LIMPIAR MANIFEST EN TIEMPO REAL
       # =========================================================
       - name: Corregir Manifest
         working-directory: ${{ env.PROJECT_DIR }}
