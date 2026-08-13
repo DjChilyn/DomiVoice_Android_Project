@@ -9,10 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # =========================================================
-      # 1. CHECKOUT Y CONFIGURACIÓN BASE
-      # =========================================================
-      - name: Checkout Repositorio
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Java 17
@@ -24,10 +21,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # =========================================================
-      # 2. LOCALIZAR PROYECTO
-      # =========================================================
-      - name: Buscar Proyecto Android
+      - name: Locate Android Project
         run: |
           if [ -f "DomiVoice_Android_Project.zip" ]; then
             unzip -q DomiVoice_Android_Project.zip -d proyecto
@@ -37,10 +31,7 @@ jobs:
           fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
-      # =========================================================
-      # 3. GRADLE, ANDROIDX Y REGLAS PROGUARD (ANTI-CRASH)
-      # =========================================================
-      - name: Preparar Gradle y Reglas
+      - name: Prepare Gradle and ProGuard Rules
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
@@ -48,22 +39,17 @@ jobs:
           fi
           chmod +x ./gradlew
           
-          # AndroidX y RAM
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> gradle.properties
           
-          # LA MAGIA ANTI-CRASH: Evitar que R8 destruya el código
           mkdir -p app
           echo "-dontobfuscate" > app/proguard-rules.pro
           echo "-dontshrink" >> app/proguard-rules.pro
           echo "-dontoptimize" >> app/proguard-rules.pro
           echo "-keep class com.domivoice.app.** { *; }" >> app/proguard-rules.pro
 
-      # =========================================================
-      # 4. LIMPIAR MANIFEST EN TIEMPO REAL
-      # =========================================================
-      - name: Corregir Manifest
+      - name: Fix Manifest
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           MANIFEST=$(find . -name "AndroidManifest.xml" | head -n 1)
@@ -71,23 +57,17 @@ jobs:
           sed -i '/android:icon="@mipmap\/ic_launcher"/d' "$MANIFEST"
           sed -i '/android:roundIcon="@mipmap\/ic_launcher_round"/d' "$MANIFEST"
 
-      # =========================================================
-      # 5. INYECTAR LA FIRMA DE PRODUCCIÓN
-      # =========================================================
-      - name: Decodificar Llave Secreta
+      - name: Decode Keystore Secret
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERROR: No se encontró el secreto KEYSTORE_BASE64."
+            echo "ERROR: KEYSTORE_BASE64 secret not found."
             exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > $GITHUB_WORKSPACE/keystore.jks
 
-      # =========================================================
-      # 6. COMPILAR EL APK RELEASE
-      # =========================================================
-      - name: Compilar y Firmar APK
+      - name: Build and Sign Release APK
         working-directory: ${{ env.PROJECT_DIR }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -100,10 +80,7 @@ jobs:
             -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
             -Pandroid.injected.signing.key.password=$KEY_PASSWORD
 
-      # =========================================================
-      # 7. VERIFICAR FIRMA Y RENOMBRAR
-      # =========================================================
-      - name: Verificar y Renombrar APK
+      - name: Verify and Rename APK
         run: |
           APK_FILE=$(find ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release -name "*.apk" | grep -v "unaligned" | head -n 1)
           mv "$APK_FILE" DomiVoice-release.apk
@@ -111,10 +88,7 @@ jobs:
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
           $BUILD_TOOLS/apksigner verify --verbose --print-certs DomiVoice-release.apk
 
-      # =========================================================
-      # 8. SUBIR PARA DESCARGA
-      # =========================================================
-      - name: Subir APK Definitivo
+      - name: Upload Final APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DomiVoice-Release-APK
