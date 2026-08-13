@@ -1,4 +1,4 @@
-name: Build Release APK
+name: Build Safe Release APK
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
           fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
-      - name: Prepare Gradle and ProGuard Rules
+      - name: Prepare Gradle Properties and Wrapper
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -f "./gradlew" ]; then
@@ -39,15 +39,10 @@ jobs:
           fi
           chmod +x ./gradlew
           
+          # Configuraciones esenciales para evitar fallos de memoria y compatibilidad
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> gradle.properties
-          
-          mkdir -p app
-          echo "-dontobfuscate" > app/proguard-rules.pro
-          echo "-dontshrink" >> app/proguard-rules.pro
-          echo "-dontoptimize" >> app/proguard-rules.pro
-          echo "-keep class com.domivoice.app.** { *; }" >> app/proguard-rules.pro
 
       - name: Fix Manifest
         working-directory: ${{ env.PROJECT_DIR }}
@@ -67,7 +62,7 @@ jobs:
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > $GITHUB_WORKSPACE/keystore.jks
 
-      - name: Build and Sign Release APK
+      - name: Build and Sign APK Release
         working-directory: ${{ env.PROJECT_DIR }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
